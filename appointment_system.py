@@ -1,240 +1,261 @@
-"""
-Appointment Booking and Reminder System
----------------------------------------
-Python Mini Project - BCA, MRIIRS
-Made by: Abhishek (Roll No: 25/SCA/BCOA/005)
-
-What it does:
-  * Book an appointment (name, phone, date, time, purpose)
-  * Stop two people from booking the same date + time
-  * View all appointments
-  * Cancel an appointment
-  * Show reminders for today and the next few days
-  * Search appointments by name
-
-All data is saved in a small file (appointments.json), so nothing is
-lost when the program is closed.
-"""
-
 import json
 from datetime import datetime, date, timedelta
+from pathlib import Path
 
-DATA_FILE = "appointments.json"   # the file where we keep everything
-REMINDER_DAYS = 2                 # remind about appointments in the next 2 days
+DATA_FILE = Path(__file__).resolve().parent / "appointments.json"
+REMINDER_DAYS = 2
 
 
-# ---------------------------------------------------------------
-# Part 1: Saving and loading data
-# ---------------------------------------------------------------
+# Load saved appointments
 def load_appointments():
-    """Read all appointments from the file. If there is no file yet, start empty."""
-    try:
-        with open(DATA_FILE, "r") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return []
+    if DATA_FILE.exists():
+        try:
+            with open(DATA_FILE, "r") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError):
+            return []
+    return []
 
 
+# Save appointments permanently
 def save_appointments(appointments):
-    """Write the full list of appointments back to the file."""
     with open(DATA_FILE, "w") as f:
         json.dump(appointments, f, indent=4)
 
 
-# ---------------------------------------------------------------
-# Part 2: Small helper functions
-# ---------------------------------------------------------------
-def get_next_id(appointments):
-    """Give every new appointment a number: 1, 2, 3 ..."""
-    if len(appointments) == 0:
-        return 1
-    return max(a["id"] for a in appointments) + 1
+# Select purpose
+def choose_purpose():
+    print("\n--- Appointment Purpose ---")
+    print("1. Fever")
+    print("2. Eye Checkup")
+    print("3. Dental Checkup")
+    print("4. Headache")
+    print("5. General Checkup")
+    print("6. Other")
+
+    choice = input("Select purpose: ")
+
+    purposes = {
+        "1": "Fever",
+        "2": "Eye Checkup",
+        "3": "Dental Checkup",
+        "4": "Headache",
+        "5": "General Checkup",
+        "6": "Other"
+    }
+
+    if choice in purposes:
+        return purposes[choice]
+
+    print("Invalid choice!")
+    return choose_purpose()
 
 
-def ask_date():
-    """Keep asking until the user types a valid date that is not in the past."""
-    while True:
-        text = input("Enter date (YYYY-MM-DD): ").strip()
-        try:
-            chosen = datetime.strptime(text, "%Y-%m-%d").date()
-        except ValueError:
-            print("  Oops! That is not a valid date. Example: 2026-11-25")
-            continue
-        if chosen < date.today():
-            print("  That date is already over. Please pick today or a future date.")
-            continue
-        return text
-
-
-def ask_time():
-    """Keep asking until the user types a valid time in 24-hour format."""
-    while True:
-        text = input("Enter time (HH:MM, 24-hour): ").strip()
-        try:
-            datetime.strptime(text, "%H:%M")
-            return text
-        except ValueError:
-            print("  Oops! Please type the time like 14:30")
-
-
-def is_slot_taken(appointments, day, time):
-    """Check if someone has already booked this date and time (and not cancelled)."""
+# Check whether slot is already booked
+def is_slot_taken(appointments, appt_date, appt_time):
     for a in appointments:
-        if a["date"] == day and a["time"] == time and a["status"] == "Booked":
+        if (a["date"] == appt_date and
+                a["time"] == appt_time and
+                a["status"] == "Booked"):
             return True
     return False
 
 
-def print_appointment(a):
-    """Print one appointment in a neat line."""
-    print(f"  #{a['id']} | {a['date']} {a['time']} | {a['name']} "
-          f"({a['phone']}) | {a['purpose']} | {a['status']}")
-
-
-# ---------------------------------------------------------------
-# Part 3: The main features
-# ---------------------------------------------------------------
+# Book appointment
 def book_appointment(appointments):
-    print("\n--- Book a New Appointment ---")
-    name = input("Enter your name: ").strip()
-    if name == "":
-        print("  Name cannot be empty.")
+    print("\n--- Book Appointment ---")
+
+    name = input("Enter patient name: ").strip()
+
+    if not name:
+        print("Name cannot be empty!")
         return
 
-    phone = input("Enter phone number (10 digits): ").strip()
-    if not (phone.isdigit() and len(phone) == 10):
-        print("  Phone number must be exactly 10 digits.")
+    phone = input("Enter 10-digit phone number: ").strip()
+
+    if not phone.isdigit() or len(phone) != 10:
+        print("Invalid phone number!")
         return
 
-    day = ask_date()
-    time = ask_time()
+    try:
+        appt_date = input("Enter date (YYYY-MM-DD): ").strip()
+        date_obj = datetime.strptime(appt_date, "%Y-%m-%d").date()
 
-    # make sure nobody else has this slot
-    if is_slot_taken(appointments, day, time):
-        print("  Sorry, that slot is already booked. Please try another time.")
+        if date_obj < date.today():
+            print("Past date is not allowed!")
+            return
+
+    except ValueError:
+        print("Invalid date format!")
         return
 
-    purpose = input("Purpose of visit: ").strip()
-    if purpose == "":
-        purpose = "General"
+    try:
+        appt_time = input("Enter time (HH:MM): ").strip()
+        datetime.strptime(appt_time, "%H:%M")
+
+    except ValueError:
+        print("Invalid time! Use HH:MM format.")
+        return
+
+    if is_slot_taken(appointments, appt_date, appt_time):
+        print("This time slot is already booked!")
+        return
+
+    purpose = choose_purpose()
+
+    new_id = max([a["id"] for a in appointments], default=0) + 1
 
     new_appointment = {
-        "id": get_next_id(appointments),
+        "id": new_id,
         "name": name,
         "phone": phone,
-        "date": day,
-        "time": time,
+        "date": appt_date,
+        "time": appt_time,
         "purpose": purpose,
-        "status": "Booked",
+        "status": "Booked"
     }
+
     appointments.append(new_appointment)
     save_appointments(appointments)
-    print(f"  Done! Appointment #{new_appointment['id']} booked for {day} at {time}.")
+
+    print("\nAppointment booked successfully!")
+    print("Appointment ID:", new_id)
 
 
+# View all appointments
 def view_appointments(appointments):
     print("\n--- All Appointments ---")
-    if len(appointments) == 0:
-        print("  No appointments yet.")
+
+    active = [a for a in appointments if a["status"] == "Booked"]
+
+    if not active:
+        print("No appointments found.")
         return
-    # sort by date first, then by time
-    for a in sorted(appointments, key=lambda x: (x["date"], x["time"])):
-        print_appointment(a)
+
+    active.sort(key=lambda a: (a["date"], a["time"]))
+
+    for a in active:
+        print("\nID:", a["id"])
+        print("Name:", a["name"])
+        print("Phone:", a["phone"])
+        print("Date:", a["date"])
+        print("Time:", a["time"])
+        print("Purpose:", a["purpose"])
+        print("Status:", a["status"])
 
 
+# Cancel appointment
 def cancel_appointment(appointments):
-    print("\n--- Cancel an Appointment ---")
-    text = input("Enter the appointment number to cancel: ").strip()
-    if not text.isdigit():
-        print("  Please type a number.")
+    print("\n--- Cancel Appointment ---")
+
+    try:
+        appt_id = int(input("Enter appointment ID: "))
+    except ValueError:
+        print("Enter a valid ID!")
         return
 
-    number = int(text)
     for a in appointments:
-        if a["id"] == number:
-            if a["status"] == "Cancelled":
-                print("  This appointment is already cancelled.")
-            else:
-                a["status"] = "Cancelled"
-                save_appointments(appointments)
-                print(f"  Appointment #{number} has been cancelled.")
+        if a["id"] == appt_id and a["status"] == "Booked":
+            a["status"] = "Cancelled"
+            save_appointments(appointments)
+            print("Appointment cancelled successfully!")
             return
-    print("  No appointment found with that number.")
+
+    print("Appointment not found!")
 
 
-def show_reminders(appointments):
-    print("\n--- Reminders ---")
-    today = date.today()
-    last_day = today + timedelta(days=REMINDER_DAYS)
+# Search appointment
+def search_appointment(appointments):
+    print("\n--- Search Appointment ---")
+
+    name = input("Enter patient name: ").strip().lower()
+
     found = False
 
-    for a in sorted(appointments, key=lambda x: (x["date"], x["time"])):
-        if a["status"] != "Booked":
-            continue  # cancelled ones need no reminder
-        appt_day = datetime.strptime(a["date"], "%Y-%m-%d").date()
-        if today <= appt_day <= last_day:
-            found = True
-            if appt_day == today:
-                when = "TODAY"
-            elif appt_day == today + timedelta(days=1):
-                when = "TOMORROW"
-            else:
-                when = "on " + a["date"]
-            print(f"  Reminder: {a['name']} has an appointment {when} "
-                  f"at {a['time']} for {a['purpose']}.")
-
-    if not found:
-        print(f"  No upcoming appointments in the next {REMINDER_DAYS} days.")
-
-
-def search_by_name(appointments):
-    print("\n--- Search by Name ---")
-    word = input("Enter name to search: ").strip().lower()
-    found = False
     for a in appointments:
-        if word in a["name"].lower():
-            print_appointment(a)
+        if name in a["name"].lower() and a["status"] == "Booked":
+            print("\nID:", a["id"])
+            print("Name:", a["name"])
+            print("Phone:", a["phone"])
+            print("Date:", a["date"])
+            print("Time:", a["time"])
+            print("Purpose:", a["purpose"])
+            print("Status:", a["status"])
             found = True
+
     if not found:
-        print("  No matching appointments.")
+        print("No appointment found!")
 
 
-# ---------------------------------------------------------------
-# Part 4: The menu (this is where the program starts)
-# ---------------------------------------------------------------
+# Show reminders
+def show_reminders(appointments):
+    today = date.today()
+    end_date = today + timedelta(days=REMINDER_DAYS)
+
+    print("\n--- Appointment Reminders ---")
+
+    found = False
+
+    for a in appointments:
+        if a["status"] != "Booked":
+            continue
+
+        appt_date = datetime.strptime(a["date"], "%Y-%m-%d").date()
+
+        if today <= appt_date <= end_date:
+            print("\nID:", a["id"])
+            print("Name:", a["name"])
+            print("Date:", a["date"])
+            print("Time:", a["time"])
+            print("Purpose:", a["purpose"])
+            found = True
+
+    if not found:
+        print("No upcoming appointments in the next 2 days.")
+
+
+# Main menu
 def main():
     appointments = load_appointments()
-    print("=" * 45)
-    print("   APPOINTMENT BOOKING & REMINDER SYSTEM")
-    print("=" * 45)
 
-    # show reminders as soon as the program opens
+    print("\n================================")
+    print(" DOCTOR CLINIC APPOINTMENT SYSTEM")
+    print("================================")
+
     show_reminders(appointments)
 
     while True:
-        print("\n1. Book appointment")
-        print("2. View all appointments")
-        print("3. Cancel appointment")
-        print("4. Show reminders")
-        print("5. Search by name")
+        print("\n--- Main Menu ---")
+        print("1. Book Appointment")
+        print("2. View Appointments")
+        print("3. Cancel Appointment")
+        print("4. Search Appointment")
+        print("5. Show Reminders")
         print("6. Exit")
-        choice = input("Choose an option (1-6): ").strip()
+
+        choice = input("Enter your choice: ")
 
         if choice == "1":
             book_appointment(appointments)
+
         elif choice == "2":
             view_appointments(appointments)
+
         elif choice == "3":
             cancel_appointment(appointments)
+
         elif choice == "4":
-            show_reminders(appointments)
+            search_appointment(appointments)
+
         elif choice == "5":
-            search_by_name(appointments)
+            show_reminders(appointments)
+
         elif choice == "6":
-            print("Thank you! Goodbye.")
+            print("Thank you for using the Appointment System!")
             break
+
         else:
-            print("  Invalid choice. Please enter a number from 1 to 6.")
+            print("Invalid choice! Try again.")
 
 
 if __name__ == "__main__":
